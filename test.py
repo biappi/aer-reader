@@ -6,8 +6,6 @@ from os import path
 # Arrays: key + array size (little-endian?) + NULL + contents
 # Strings: key + string length??? + NULL + contents + NULL
 
-URLS = set()
-
 def scan_line(num, buf):
     bool_keys = ["aplt", "cnpr", "ilbo", "isab", "isbo", "lite", "loop", "rlbo",
                  "rldl", "rlll", "rlsu", "rsbo", "scty", "strt", "subt"]
@@ -22,7 +20,9 @@ def scan_line(num, buf):
     ints_keys = ["cn3s", "list", "lmls", "stl2"]
     dbls_keys = ["lkdr", "oRNt", "oRnt", "size", "vals"]
     types_keys = ["idnt", "stid"]
-    
+
+    urls = set()
+
     #print head.group(1)
     data = {}
     while buf:
@@ -81,7 +81,7 @@ def scan_line(num, buf):
         #    except TypeError as err:
         #        print ">>> Warning: Non-integer %s set for field %s." % (repr(val), key)
         elif key in url_keys:
-            URLS.add(val)
+            urls.add(val)
         elif key in types_keys:
             def s_type(scanner, token): return token
             scanner = re.Scanner([(r"[A-Z0-9]{4}", s_type)])
@@ -92,7 +92,7 @@ def scan_line(num, buf):
         data[key] = val
     #print "--"
     
-    return data
+    return data, urls
 
 
 def read_aer_file(filename):
@@ -118,11 +118,13 @@ class Chunk(collections.namedtuple('Chunk',
 
     def dump(self, parse):
         if parse:
-            data = scan_line(self.idx, self.data)
+            data, urls = scan_line(self.idx, self.data)
         else:
-            data = repr(self.data[:70])
+            data, urls = repr(self.data[:70]), set()
 
         print str(self.idx).zfill(4), self.head1, self.head2.zfill(3), data
+
+        return urls
 
 
 def iterate_chunks(data):
@@ -149,15 +151,17 @@ def main(aer_name, parse=False, save_dat_file=False):
         with open(wld_name + ".dat", "wb") as dst_f:
             dst_f.write(dat)
 
+    urls = set()
+
     for chunk in iterate_chunks(dat):
-        chunk.dump(parse)
+        urls.update(chunk.dump(parse))
 
     print "----"
 
-    URLS.add("./Viewer.png")
-    URLS.add("./%s.ctl" % wld_name)
+    urls.add("./Viewer.png")
+    urls.add("./%s.ctl" % wld_name)
 
-    for url in sorted(URLS):
+    for url in sorted(urls):
         print url
 
 if __name__ == "__main__":
