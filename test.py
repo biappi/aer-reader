@@ -106,16 +106,16 @@ def print_chunk(num, head, data, parse):
 
 def main(aer_name, parse):
     wld_name = path.splitext(path.basename(aer_name))[0]
-    header = ""
 
     with open(aer_name, "r") as aer_f:
-        header = aer_f.readline()
-        aer    = aer_f.read()
+        header  = aer_f.readline()
 
-        with open(wld_name + ".dat.gz", "wb") as dat_f:
-            dat_f.write(aer)
+        # NOTE(willy): those two lines of code seem not to be needed, as
+        #              gzip.GzipFile does not seem to rewind the file.
+        #content = aer_f.read()
+        #gzipped = StringIO.StringIO(content)
 
-        dat_f = gzip.GzipFile(wld_name + ".dat.gz", "rb")
+        dat_f = gzip.GzipFile(fileobj=aer_f)
         dat = dat_f.read()
         dat_f.close()
 
