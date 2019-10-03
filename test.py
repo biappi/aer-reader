@@ -110,12 +110,10 @@ def main(aer_name, parse):
 
     with open(aer_name, "r") as aer_f:
         header = aer_f.readline()
-
-    with open(aer_name, "rb") as aer_f:
-        aer = aer_f.read()
+        aer    = aer_f.read()
 
         with open(wld_name + ".dat.gz", "wb") as dat_f:
-            dat_f.write(aer[len(header):])
+            dat_f.write(aer)
 
         dat_f = gzip.GzipFile(wld_name + ".dat.gz", "rb")
         dat = dat_f.read()
