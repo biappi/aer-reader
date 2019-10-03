@@ -117,6 +117,21 @@ class Chunk(collections.namedtuple('Chunk',
         ('idx', 'head1', 'head2', 'data')
     )):
 
+    @staticmethod
+    def iterate_from_data(data):
+        for num, line in enumerate(re.split(r"\n(?=[A-Z0-9]{4}\d)", data)):
+            head = re.match(r"^([A-Z0-9]{4})(\d+):", line)
+
+            if not head:
+                raise ChunkHeaderNotRecognized
+
+            yield Chunk(
+                num,
+                head.group(1),
+                head.group(2),
+                line[len(head.group(1) + head.group(2)) + 1:].strip(),
+            )
+
     def parse(self):
         return scan_line(self.idx, self.data)
 
@@ -125,33 +140,30 @@ class Chunk(collections.namedtuple('Chunk',
         print str(self.idx).zfill(4), self.head1, self.head2.zfill(3), data
 
 
-def iterate_chunks(data):
-    for num, line in enumerate(re.split(r"\n(?=[A-Z0-9]{4}\d)", data)):
-        head = re.match(r"^([A-Z0-9]{4})(\d+):", line)
+def world_name_from_filename(filename):
+    return path.splitext(path.basename(filename))[0]
 
-        if not head:
-            raise ChunkHeaderNotRecognized
 
-        yield Chunk(
-            num,
-            head.group(1),
-            head.group(2),
-            line[len(head.group(1) + head.group(2)) + 1:].strip(),
-        )
+def convert_aer_to_dat(filename):
+    _, content   = read_aer_file(filename)
+    dat_filename = world_name_from_filename(filename) + ".dat"
+
+    with open(dat_filename + ".dat", "wb") as dst_f:
+        dst_f.write(content)
+
+
+def default_urls(aer_filename):
+    return set((
+        "./Viewer.png",
+        "./%s.ctl" % (world_name_from_filename(aer_filename),)
+    ))
 
 
 def main(aer_name, parse=False, save_dat_file=False):
-    wld_name = path.splitext(path.basename(aer_name))[0]
+    header, dat = read_aer_file (aer_name)
+    urls        = default_urls  (aer_name)
 
-    header, dat = read_aer_file(aer_name)
-
-    if save_dat_file:
-        with open(wld_name + ".dat", "wb") as dst_f:
-            dst_f.write(dat)
-
-    urls = set()
-
-    for chunk in iterate_chunks(dat):
+    for chunk in Chunk.iterate_from_data(dat):
         if parse:
             parsed_data, parsed_urls = chunk.parse()
             urls.update(parsed_urls)
@@ -161,10 +173,6 @@ def main(aer_name, parse=False, save_dat_file=False):
         chunk.dump(parsed_data)
 
     print "----"
-
-    urls.add("./Viewer.png")
-    urls.add("./%s.ctl" % wld_name)
-
     for url in sorted(urls):
         print url
 
