@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, gzip, re, struct
+import sys, gzip, re, struct, collections
 from os import path
 
 # Arrays: key + array size (little-endian?) + NULL + contents
@@ -109,9 +109,23 @@ def read_aer_file(filename):
         with gzip.GzipFile(fileobj=aer_f) as dat_f:
             return (header, dat_f.read())
 
+
 class ChunkHeaderNotRecognized(Exception): pass
 
-def iteate_chunks(data):
+class Chunk(collections.namedtuple('Chunk',
+        ('idx', 'head1', 'head2', 'data')
+    )):
+
+    def dump(self, parse):
+        if parse:
+            data = scan_line(self.idx, self.data)
+        else:
+            data = repr(self.data[:70])
+
+        print str(self.idx).zfill(4), self.head1, self.head2.zfill(3), data
+
+
+def iterate_chunks(data):
     for num, line in enumerate(re.split(r"\n(?=[A-Z0-9]{4}\d)", data)):
         head = re.match(r"^([A-Z0-9]{4})(\d+):", line)
 
@@ -123,7 +137,8 @@ def iteate_chunks(data):
         head2 = head.group(2)
         data  = line[len(head1 + head2) + 1:].strip()
 
-        yield (idx, head1, head2, data)
+        yield Chunk(idx, head1, head2, data)
+
 
 def main(aer_name, parse=False, save_dat_file=False):
     wld_name = path.splitext(path.basename(aer_name))[0]
@@ -134,14 +149,8 @@ def main(aer_name, parse=False, save_dat_file=False):
         with open(wld_name + ".dat", "wb") as dst_f:
             dst_f.write(dat)
 
-    for idx, head1, head2, data in iteate_chunks(dat):
-        if parse:
-            data = scan_line(idx, data)
-        else:
-            data = repr(data[:70])
-
-        print str(idx).zfill(4), head1, head2.zfill(3), data
-
+    for chunk in iterate_chunks(dat):
+        chunk.dump(parse)
 
     print "----"
 
