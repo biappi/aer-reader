@@ -157,7 +157,7 @@ def main(aer_name, parse=False, save_dat_file=False):
     URLS.add("./Viewer.png")
     URLS.add("./%s.ctl" % wld_name)
 
-    for url in URLS:
+    for url in sorted(URLS):
         print url
 
 if __name__ == "__main__":
