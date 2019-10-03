@@ -94,6 +94,16 @@ def scan_line(num, buf):
     
     return data
 
+
+def print_chunk(num, head, data, parse):
+    if parse:
+        data = scan_line(num, data)
+    else:
+        data = repr(data[:70])
+
+    print str(num).zfill(4), head.group(1), head.group(2).zfill(3), data
+
+
 def main(aer_name, parse):
     wld_name = path.splitext(path.basename(aer_name))[0]
     header = ""
@@ -122,13 +132,8 @@ def main(aer_name, parse):
                 continue
 
             data = line[len(head.group(1) + head.group(2)) + 1:].strip()
+            print_chunk(num, head, data, parse)
 
-            if parse:
-                data = scan_line(num, data)
-                print str(num).zfill(4), head.group(1), head.group(2).zfill(3), data
-            else:
-                print str(num).zfill(4), head.group(1), head.group(2).zfill(3), repr(data[:70])
-    
     print "----"
 
     URLS.add("./Viewer.png")
