@@ -134,12 +134,12 @@ def iterate_chunks(data):
         if not head:
             raise ChunkHeaderNotRecognized
 
-        idx   = num
-        head1 = head.group(1)
-        head2 = head.group(2)
-        data  = line[len(head1 + head2) + 1:].strip()
-
-        yield Chunk(idx, head1, head2, data)
+        yield Chunk(
+            num,
+            head.group(1),
+            head.group(2),
+            line[len(head.group(1) + head.group(2)) + 1:].strip(),
+        )
 
 
 def main(aer_name, parse=False, save_dat_file=False):
