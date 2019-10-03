@@ -95,15 +95,6 @@ def scan_line(num, buf):
     return data
 
 
-def print_chunk(num, head, data, parse):
-    if parse:
-        data = scan_line(num, data)
-    else:
-        data = repr(data[:70])
-
-    print str(num).zfill(4), head.group(1), head.group(2).zfill(3), data
-
-
 def read_aer_file(filename):
     "returns: (aer_header, content)"
 
@@ -120,6 +111,20 @@ def read_aer_file(filename):
 
 class ChunkHeaderNotRecognized(Exception): pass
 
+def iteate_chunks(data):
+    for num, line in enumerate(re.split(r"\n(?=[A-Z0-9]{4}\d)", data)):
+        head = re.match(r"^([A-Z0-9]{4})(\d+):", line)
+
+        if not head:
+            raise ChunkHeaderNotRecognized
+
+        idx   = num
+        head1 = head.group(1)
+        head2 = head.group(2)
+        data  = line[len(head1 + head2) + 1:].strip()
+
+        yield (idx, head1, head2, data)
+
 def main(aer_name, parse=False, save_dat_file=False):
     wld_name = path.splitext(path.basename(aer_name))[0]
 
@@ -129,14 +134,14 @@ def main(aer_name, parse=False, save_dat_file=False):
         with open(wld_name + ".dat", "wb") as dst_f:
             dst_f.write(dat)
 
-    for num, line in enumerate(re.split(r"\n(?=[A-Z0-9]{4}\d)", dat)):
-        head = re.match(r"^([A-Z0-9]{4})(\d+):", line)
+    for idx, head1, head2, data in iteate_chunks(dat):
+        if parse:
+            data = scan_line(idx, data)
+        else:
+            data = repr(data[:70])
 
-        if not head:
-            raise ChunkHeaderNotRecognized
+        print str(idx).zfill(4), head1, head2.zfill(3), data
 
-        data = line[len(head.group(1) + head.group(2)) + 1:].strip()
-        print_chunk(num, head, data, parse)
 
     print "----"
 
