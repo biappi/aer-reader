@@ -112,19 +112,17 @@ def read_aer_file(filename):
 
 class ChunkHeaderNotRecognized(Exception): pass
 
+
 class Chunk(collections.namedtuple('Chunk',
         ('idx', 'head1', 'head2', 'data')
     )):
 
-    def dump(self, parse):
-        if parse:
-            data, urls = scan_line(self.idx, self.data)
-        else:
-            data, urls = repr(self.data[:70]), set()
+    def parse(self):
+        return scan_line(self.idx, self.data)
 
+    def dump(self, parsed_data=None):
+        data = parsed_data or repr(self.data[:70])
         print str(self.idx).zfill(4), self.head1, self.head2.zfill(3), data
-
-        return urls
 
 
 def iterate_chunks(data):
@@ -154,7 +152,13 @@ def main(aer_name, parse=False, save_dat_file=False):
     urls = set()
 
     for chunk in iterate_chunks(dat):
-        urls.update(chunk.dump(parse))
+        if parse:
+            parsed_data, parsed_urls = chunk.parse()
+            urls.update(parsed_urls)
+        else:
+            parsed_data = None
+
+        chunk.dump(parsed_data)
 
     print "----"
 
