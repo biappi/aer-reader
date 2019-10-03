@@ -104,10 +104,10 @@ def print_chunk(num, head, data, parse):
     print str(num).zfill(4), head.group(1), head.group(2).zfill(3), data
 
 
-def main(aer_name, parse):
-    wld_name = path.splitext(path.basename(aer_name))[0]
+def read_aer_file(filename):
+    "returns: (aer_header, content)"
 
-    with open(aer_name, "r") as aer_f:
+    with open(filename, "r") as aer_f:
         header  = aer_f.readline()
 
         # NOTE(willy): those two lines of code seem not to be needed, as
@@ -115,22 +115,28 @@ def main(aer_name, parse):
         #content = aer_f.read()
         #gzipped = StringIO.StringIO(content)
 
-        dat_f = gzip.GzipFile(fileobj=aer_f)
-        dat = dat_f.read()
-        dat_f.close()
+        with gzip.GzipFile(fileobj=aer_f) as dat_f:
+            return (header, dat_f.read())
 
+class ChunkHeaderNotRecognized(Exception): pass
+
+def main(aer_name, parse=False, save_dat_file=False):
+    wld_name = path.splitext(path.basename(aer_name))[0]
+
+    header, dat = read_aer_file(aer_name)
+
+    if save_dat_file:
         with open(wld_name + ".dat", "wb") as dst_f:
             dst_f.write(dat)
 
-        for num, line in enumerate(re.split(r"\n(?=[A-Z0-9]{4}\d)", dat)):
-            head = re.match(r"^([A-Z0-9]{4})(\d+):", line)
+    for num, line in enumerate(re.split(r"\n(?=[A-Z0-9]{4}\d)", dat)):
+        head = re.match(r"^([A-Z0-9]{4})(\d+):", line)
 
-            if not head:
-                print "--"
-                continue
+        if not head:
+            raise ChunkHeaderNotRecognized
 
-            data = line[len(head.group(1) + head.group(2)) + 1:].strip()
-            print_chunk(num, head, data, parse)
+        data = line[len(head.group(1) + head.group(2)) + 1:].strip()
+        print_chunk(num, head, data, parse)
 
     print "----"
 
@@ -144,6 +150,8 @@ if __name__ == "__main__":
     try: aer_name = sys.argv[1]
     except: print "usage: %s AER_FILE_NAME <parse>"; sys.exit()
 
-    parse = len(sys.argv) > 2 and sys.argv[2]
-
-    main(aer_name, parse)
+    main(
+        aer_name,
+        parse=len(sys.argv) > 2 and sys.argv[2],
+        save_dat_file=False
+    )
