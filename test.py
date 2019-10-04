@@ -1,98 +1,7 @@
 #!/usr/bin/env python
 
-import sys, gzip, re, struct, collections
+import sys, gzip, re, struct, collections, pprint, itertools
 from os import path
-
-# Arrays: key + array size (little-endian?) + NULL + contents
-# Strings: key + string length??? + NULL + contents + NULL
-
-def scan_line(num, buf):
-    bool_keys = ["aplt", "cnpr", "ilbo", "isab", "isbo", "lite", "loop", "rlbo",
-                 "rldl", "rlll", "rlsu", "rsbo", "scty", "strt", "subt"]
-    int_keys = ["aple", "avcl", "dpth", "face", "facs", "ivis", "lock", "nwst",
-                "texr"]
-    dbl_keys = ["bl..", "btwi", "ca..", "da..", "db..", "de..", "dsbr", "embr",
-                "gr..", "hite", "lmss", "mm..", "mn..", "offu", "offv", "plny",
-                "rd..", "rota", "sb..", "sfbr", "sgrn", "sizu", "sizv", "sblu",
-                "so..", "sred", "su..", "sv..", "thik", "tpwi", "widt", "wrpv",
-                "wrpu"]
-    url_keys = ["icon", "irur", "jvsr", "urln", "wrul"]
-    ints_keys = ["cn3s", "list", "lmls", "stl2"]
-    dbls_keys = ["lkdr", "oRNt", "oRnt", "size", "vals"]
-    types_keys = ["idnt", "stid"]
-
-    urls = set()
-
-    #print head.group(1)
-    data = {}
-    while buf:
-        # Unpack a key.
-        try:
-            key = struct.unpack_from("<4s", buf)[0]
-        except struct.error as err:
-            print ">>> Warning: Object %i truncated." % num
-            break
-        buf = buf[struct.calcsize("<4s"):]
-        if not re.match(r"[\w.*]+", key):
-            print ">>> Error: %s is not a valid key. Object %i is corrupted." % (repr(key), num)
-            break
-        
-        # Unpack its size.
-        try:
-            val_len = int(struct.unpack_from("<H", buf)[0])
-        except struct.error as err:
-            print ">>> Warning: Object %i truncated." % num
-            break
-        buf = buf[struct.calcsize("<H"):]
-        
-        # Determine the format string for the value.
-        if key in dbl_keys and val_len == 8:
-            fmt = "<d"
-        elif (key in int_keys or key in dbl_keys or key in bool_keys) and \
-                val_len == 4:
-            fmt = "<i"
-        elif key in ints_keys:
-            fmt = "<%ii" % (val_len / 4)
-        elif key in dbls_keys:
-            fmt = "<%id" % (val_len / 8)
-        else:
-            fmt = "<%is" % val_len
-        #val = struct.unpack_from(fmt, buf)[0]
-        
-        # Unpack the value.
-        try:
-            val = struct.unpack_from(fmt, buf)
-            if key not in ints_keys and key not in dbls_keys:
-                val = val[0]
-        except struct.error as err:
-            print ">>> Error: Object %i is corrupted." % num
-            print ">>> \tKeys so far:", data.keys()
-            break
-        buf = buf[struct.calcsize(fmt):]
-        
-        # Format the value.
-        if type(val) is str and val and val[-1] == "\x00":
-            val = val[:-1]
-        if key in bool_keys:
-            val = bool(val)
-        #elif key in int_keys:
-        #    try:
-        #        val = int(ord(val or "\x00"))
-        #    except TypeError as err:
-        #        print ">>> Warning: Non-integer %s set for field %s." % (repr(val), key)
-        elif key in url_keys:
-            urls.add(val)
-        elif key in types_keys:
-            def s_type(scanner, token): return token
-            scanner = re.Scanner([(r"[A-Z0-9]{4}", s_type)])
-            val = tuple(scanner.scan(val)[0])
-        
-        # Add the value to the dataset.
-        #print "\t", key, val
-        data[key] = val
-    #print "--"
-    
-    return data, urls
 
 
 def read_aer_file(filename):
@@ -109,6 +18,190 @@ def read_aer_file(filename):
         with gzip.GzipFile(fileobj=aer_f) as dat_f:
             return (header, dat_f.read())
 
+
+def is_print(c):
+    return ((0x20 <= ord(c)) and (ord(c) < 0x7f))
+
+
+def hexify(buf):
+    for line_nr in xrange(0, (len(buf) / 0x10) + 1):
+        offset   = line_nr * 0x10
+        content  = buf[offset : offset + 0x10]
+        remain   = 0x10 - len(content)
+        
+        elements = (("%02x" % ord(i)) for i in content)
+        spaces   = ("  " for _ in xrange(0, remain))
+        hexline  = " ".join (itertools.chain(elements, spaces))
+
+        chars    = (i if is_print(i) else '.'
+                        for i in content)
+        ascline  = "".join(chars)
+
+        print "%08x  %s  %s" % (offset, hexline, ascline)
+
+
+def chunk_by(l, by):
+    return [l[i * by : (i * by) + by]
+        for i in xrange(len(l) / by)]
+
+class UNK(str):
+    "tag a string to be an unknown value"
+    
+    def __repr__(self):
+        if len(self) == 0: return "''"
+        string = str(self if self[-1] != '\0' else self[:-1])
+        return repr(string)
+
+class URL(str):
+    "tag a string to be an url"
+    pass
+
+def tag_unknown_to_value(value):
+    return UNK(value)
+
+def tag_string_to_value(value):
+    return value if value[-1] != '\0' else value[:-1]
+
+def tag_int_to_value(value):
+    return struct.unpack('<i', value)[0]
+
+def tag_bool_to_value(value):
+    return bool(tag_int_to_value(value))
+
+def tag_double_to_value(value):
+    if len(value) == 4:
+        return struct.unpack('<i', value)[0]
+    else:
+        return struct.unpack('<d', value)[0]
+
+def tag_url_to_value(value):
+    return URL(tag_string_to_value(value))
+
+def tag_ints_to_value(value):
+    return tuple(tag_int_to_value(i)
+        for i in chunk_by(value, 4))
+
+def tag_doubles_to_value(value):
+    return tuple(tag_double_to_value(i)
+        for i in chunk_by(value, 8))
+
+def tag_types_to_value(value):
+    return tuple(chunk_by(value, 4))
+
+
+tag_to_value_functions = {
+    'aplt': tag_bool_to_value,
+    'cnpr': tag_bool_to_value,
+    'ilbo': tag_bool_to_value,
+    'isab': tag_bool_to_value,
+    'isbo': tag_bool_to_value,
+    'lite': tag_bool_to_value,
+    'loop': tag_bool_to_value,
+    'rlbo': tag_bool_to_value,
+    'rldl': tag_bool_to_value,
+    'rlll': tag_bool_to_value,
+    'rlsu': tag_bool_to_value,
+    'rsbo': tag_bool_to_value,
+    'scty': tag_bool_to_value,
+    'strt': tag_bool_to_value,
+    'subt': tag_bool_to_value,
+
+    'aple': tag_int_to_value,
+    'avcl': tag_int_to_value,
+    'dpth': tag_int_to_value,
+    'face': tag_int_to_value,
+    'facs': tag_int_to_value,
+    'ivis': tag_int_to_value,
+    'lock': tag_int_to_value,
+    'nwst': tag_int_to_value,
+    'texr': tag_int_to_value,
+
+    'bl..': tag_double_to_value,
+    'btwi': tag_double_to_value,
+    'ca..': tag_double_to_value,
+    'da..': tag_double_to_value,
+    'db..': tag_double_to_value,
+    'de..': tag_double_to_value,
+    'dsbr': tag_double_to_value,
+    'embr': tag_double_to_value,
+    'gr..': tag_double_to_value,
+    'hite': tag_double_to_value,
+    'lmss': tag_double_to_value,
+    'mm..': tag_double_to_value,
+    'mn..': tag_double_to_value,
+    'offu': tag_double_to_value,
+    'offv': tag_double_to_value,
+    'plny': tag_double_to_value,
+    'rd..': tag_double_to_value,
+    'rota': tag_double_to_value,
+    'sb..': tag_double_to_value,
+    'sfbr': tag_double_to_value,
+    'sgrn': tag_double_to_value,
+    'sizu': tag_double_to_value,
+    'sizv': tag_double_to_value,
+    'sblu': tag_double_to_value,
+    'so..': tag_double_to_value,
+    'sred': tag_double_to_value,
+    'su..': tag_double_to_value,
+    'sv..': tag_double_to_value,
+    'thik': tag_double_to_value,
+    'tpwi': tag_double_to_value,
+    'widt': tag_double_to_value,
+    'wrpv': tag_double_to_value,
+    'wrpu': tag_double_to_value,
+
+    'icon': tag_url_to_value,
+    'irur': tag_url_to_value,
+    'jvsr': tag_url_to_value,
+    'urln': tag_url_to_value,
+    'wrul': tag_url_to_value,
+
+    'cn3s': tag_ints_to_value,
+    'list': tag_ints_to_value,
+    'lmls': tag_ints_to_value,
+    'stl2': tag_ints_to_value,
+
+    'lkdr': tag_doubles_to_value,
+    'oRNt': tag_doubles_to_value,
+    'oRnt': tag_doubles_to_value,
+    'size': tag_doubles_to_value,
+    'vals': tag_doubles_to_value,
+
+    'idnt': tag_types_to_value,
+    'stid': tag_types_to_value,
+}
+
+
+def tag_content_to_value(tag_and_content):
+    tag, content = tag_and_content
+    tag_to_value = tag_to_value_functions.get(tag, tag_unknown_to_value)
+    return tag, tag_to_value(content)
+
+
+TagLenStruct = struct.Struct("<4sH")
+def parse_tag_len_value(buf, offset):
+
+    tag, length = TagLenStruct.unpack_from(buf, offset)
+
+    # NOTE(willy): if length is 0xffff, the value of the current tag
+    #              is the entirety of the remainer of the chunk's
+    #              data.
+
+    if length != 0xffff:
+        next_offset = offset + TagLenStruct.size + length
+        value = buf[offset + TagLenStruct.size : next_offset]
+    else:
+        next_offset = len(buf) + 1
+        value = buf[offset + TagLenStruct.size:]
+
+    return (next_offset, (tag, value))
+
+
+def iterate_tag_values(buf):
+    offset = 0
+    while offset < len(buf):
+        offset, tlv = parse_tag_len_value(buf, offset)
+        yield tlv
 
 class ChunkHeaderNotRecognized(Exception): pass
 
@@ -133,7 +226,17 @@ class Chunk(collections.namedtuple('Chunk',
             )
 
     def parse(self):
-        return scan_line(self.idx, self.data)
+        urls = set()
+        data = {}
+
+        for item in iterate_tag_values(self.data):
+            tagged_item = tag_content_to_value(item)
+            data[tagged_item[0]] = tagged_item[1]
+
+            if isinstance(tagged_item[1], URL):
+                urls.add(tagged_item[1])
+
+        return data, urls
 
     def dump(self, parsed_data=None):
         data = parsed_data or repr(self.data[:70])
