@@ -20,8 +20,10 @@ diff "$TEST_OUTPUT_FILE" tests/ideal_city.no-parse-output.txt > /dev/null
 if [ $? -ne 0 ]; then
     STATUS=$[$STATUS + 1]
     echo "no parse test -- FAILED"
+    echo "                 diff \"$TEST_OUTPUT_FILE\" \"tests/ideal_city.no-parse-output.txt\""
 else
     echo "no parse test -- PASSED"
+    rm "$TEST_OUTPUT_FILE"
 fi
 
 python test.py tests/ideal_city.AER 1 > "$TEST_OUTPUT_FILE"
@@ -37,8 +39,10 @@ diff "$TEST_OUTPUT_FILE" tests/ideal_city.yes-parse-output.txt > /dev/null
 if [ $? -ne 0 ]; then
     STATUS=$[$STATUS + 2]
     echo "parse test    -- FAILED"
+    echo "                 diff \"$TEST_OUTPUT_FILE\" \"tests/ideal_city.yes-parse-output.txt\""
 else
     echo "parse test    -- PASSED"
+    rm "$TEST_OUTPUT_FILE"
 fi
 
 echo
